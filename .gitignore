@@ -1,0 +1,25 @@
+# Security & Secrets (NIGDY nie udostępniaj na GitHubie)
+.env
+credentials.json
+token.json
+
+# Środowiska wirtualne Python / Conda
+venv/
+env/
+.venv/
+ENV/
+
+# Pamięć podręczna Pythona (Byte-compiled files)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE & Edytory kodu
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Systemowe pliki macOS / Windows
+.DS_Store
+Thumbs.db

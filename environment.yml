@@ -1,0 +1,22 @@
+name: agent_travel
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      # Google GenAI Official SDK
+      - google-genai
+      
+      # Google Workspace & OAuth APIs
+      - google-api-python-client
+      - google-auth-httplib2
+      - google-auth-oauthlib
+      
+      # SerpApi integration for Google Flights & Google Hotels
+      - serpapi
+      
+      # Environment variables & utilities
+      - python-dotenv
+      - tenacity
