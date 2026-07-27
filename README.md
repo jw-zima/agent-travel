@@ -39,5 +39,52 @@ agent-travel/
 ├── setup_oauth.py          # Interactive OAuth 2.0 credential setup script
 ├── main.py                 # Interactive terminal application entry point
 └── README.md               # Project documentation
+```
 
-## TO BE CONTINUED
+## 🚀 Getting Started
+
+### 1. Prerequisites & Environment Setup
+Clone the repository and create the Conda environment using `environment.yml`:
+
+> git clone https://github.com/YOUR_USERNAME/agent-travel.git
+>
+> cd agent-travel
+>
+> conda env create -f environment.yml
+>
+> conda activate agent_travel
+
+### 2. Configure API Keys
+Create a `.env` file in the root directory by copying `.env.example`:
+
+> cp .env.example .env
+Fill in your actual secret keys inside `.env`:
+
+- `GEMINI_API_KEY` = your_google_ai_studio_api_key
+- `SERPAPI_KEY` = your_serpapi_key
+
+### 3. Setup Google Workspace OAuth 2.0
+
+1. Download your OAuth 2.0 Client Credentials JSON from the Google Cloud Console.
+2. Save the file in the project root directory as **`credentials.json`**.
+3. Run the interactive authentication setup script:
+
+> python setup_oauth.py
+This will open your browser to authorize access for Google Calendar, Google Drive, and Google Docs, generating a local **`token.json`** file.
+
+## 🧪 Usage & Example Run
+Run the main application:
+
+> python main.py
+
+### Example Interactive Flow
+
+1. **User Query**: "I want to plan a trip from Warsaw (WAW) to Rome (FCO) for the dates from 2026-09-15 to 2026-09-18."
+2. **Phase 1 (Flight Search)**: Agent searches flights via SerpApi and halts with status `STATUS: PENDING_APPROVAL`.
+3. **User Input**: "Option 1"
+4. **Phase 2 (Hotel Search)**: Agent searches hotels for Rome city center and requests final approval (`STATUS: PENDING_APPROVAL`).
+5. **User Input**: "Approved"
+6. **Phase 3 (Workspace Export)**: Agent creates Calendar events and exports the final Google Doc to Google Drive.
+
+## 🛡️ License & Disclaimer
+**Disclaimer**: This project is for planning and educational purposes. The AI agent **does not perform actual financial bookings or payment transactions**. All saved calendar and drive items are strictly informative context entries.

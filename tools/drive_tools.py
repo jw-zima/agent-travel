@@ -10,6 +10,19 @@ SCOPES = [
     'https://www.googleapis.com/auth/documents'
 ]
 
+
+def _has_required_scopes(creds: Optional[Credentials]) -> bool:
+    """
+    Checks whether the loaded credentials include the scopes needed for Drive and Docs.
+    """
+    if not creds:
+        return False
+
+    granted_scopes = set(getattr(creds, "scopes", []) or [])
+    required_scopes = set(SCOPES)
+    return required_scopes.issubset(granted_scopes)
+
+
 def _get_credentials() -> Optional[Credentials]:
     """
     Helper function to load user credentials from local token.json file.
@@ -43,6 +56,12 @@ def create_travel_itinerary_doc(
     creds = _get_credentials()
     if not creds or not creds.valid:
         return "Error: OAuth credentials token.json is missing or invalid. Run authentication first."
+
+    if not _has_required_scopes(creds):
+        return (
+            "Error: token.json is missing the required Google Drive/Docs scopes. "
+            "Please re-run setup_oauth.py to authorize Calendar, Drive, and Docs access."
+        )
 
     try:
         # Build Drive and Docs API clients

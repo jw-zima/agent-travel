@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Optional
 from dotenv import load_dotenv
 
 # Import standard official Google GenAI SDK
@@ -26,6 +26,68 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "add_calendar_event": add_calendar_event,
     "create_travel_itinerary_doc": create_travel_itinerary_doc
 }
+
+
+def extract_trip_context(user_text: str) -> Dict[str, Any]:
+    """
+    Extracts simple trip metadata from the user query to support round-trip flight handling.
+    """
+    upper_text = user_text.upper()
+    iata_codes = re.findall(r"\b([A-Z]{3})\b", upper_text)
+
+    origin = None
+    destination = None
+    if len(iata_codes) >= 2:
+        origin = iata_codes[0]
+        destination = iata_codes[1]
+
+    dates = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", user_text)
+    outbound_date = dates[0] if dates else None
+    return_date = dates[1] if len(dates) > 1 else None
+
+    is_round_trip = bool(return_date) or any(word in upper_text for word in [" RETURN ", " POWRÓT", " POWROT", " DO "])
+
+    return {
+        "origin": origin,
+        "destination": destination,
+        "outbound_date": outbound_date,
+        "return_date": return_date,
+        "is_round_trip": is_round_trip,
+    }
+
+
+def execute_flight_search(kwargs: Dict[str, Any], trip_context: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Executes flight search for both legs when the user requested a round-trip itinerary.
+    """
+    if trip_context and trip_context.get("is_round_trip"):
+        departure_id = kwargs.get("departure_id") or trip_context.get("origin")
+        arrival_id = kwargs.get("arrival_id") or trip_context.get("destination")
+        outbound_date = kwargs.get("outbound_date") or trip_context.get("outbound_date")
+        return_date = kwargs.get("return_date") or trip_context.get("return_date")
+
+        if departure_id and arrival_id and outbound_date and return_date:
+            outbound_result = search_flights(
+                departure_id=departure_id,
+                arrival_id=arrival_id,
+                outbound_date=outbound_date,
+                currency=kwargs.get("currency", "PLN"),
+                hl=kwargs.get("hl", "en")
+            )
+            return_result = search_flights(
+                departure_id=arrival_id,
+                arrival_id=departure_id,
+                outbound_date=return_date,
+                currency=kwargs.get("currency", "PLN"),
+                hl=kwargs.get("hl", "en")
+            )
+            return (
+                f"### Round-trip Flight Search Results\n"
+                f"Outbound leg ({departure_id} -> {arrival_id} on {outbound_date}):\n{outbound_result}\n\n"
+                f"Return leg ({arrival_id} -> {departure_id} on {return_date}):\n{return_result}"
+            )
+
+    return search_flights(**kwargs)
 
 
 def parse_action(llm_text: str):
@@ -93,6 +155,7 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
 
     current_input = user_prompt
     iteration = 0
+    trip_context = extract_trip_context(user_prompt)
 
     # Tracking tools calls to prevent infinite loops
     last_action_signature = None
@@ -101,6 +164,13 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
 
     print(f"\n🚀 Starting Travel Agent ReAct Session...")
     print(f"User Request: {user_prompt}\n" + "="*60)
+
+    tool_registry: Dict[str, Callable] = {
+        "search_flights": lambda **kwargs: execute_flight_search(kwargs, trip_context),
+        "search_hotels": search_hotels,
+        "add_calendar_event": add_calendar_event,
+        "create_travel_itinerary_doc": create_travel_itinerary_doc,
+    }
 
     while iteration < max_iterations:
         iteration += 1
@@ -136,9 +206,9 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
                 print(f"\n⛔ {error_msg}")
                 break
 
-            if func_name in TOOL_REGISTRY:
+            if func_name in tool_registry:
                 print(f"\n⚙️ Executing Tool: `{func_name}` with args: {kwargs}")
-                tool_func = TOOL_REGISTRY[func_name]
+                tool_func = tool_registry[func_name]
                 
                 try:
                     tool_result = tool_func(**kwargs)
@@ -148,7 +218,7 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
                 print(f"\n👁️ Tool Observation:\n{tool_result}")
                 current_input = f"Observation: {tool_result}"
             else:
-                available_tools = ", ".join(TOOL_REGISTRY.keys())
+                available_tools = ", ".join(tool_registry.keys())
                 error_msg = f"Error: Tool '{func_name}' is not recognized. Available tools are: [{available_tools}]."
                 print(f"\n⚠️ {error_msg}")
                 current_input = f"Observation: {error_msg}"
