@@ -28,6 +28,40 @@ TOOL_REGISTRY: Dict[str, Callable] = {
 }
 
 
+def detect_search_scope(user_text: str) -> str:
+    """
+    Detects whether the user wants to search flights only, hotels only, or both.
+    """
+    text = user_text.lower()
+
+    explicit_flight_only = any(
+        phrase in text for phrase in ["flight only", "flights only", "only flights", "just flights", "no hotels"]
+    )
+    explicit_hotel_only = any(
+        phrase in text for phrase in ["hotel only", "hotels only", "only hotels", "just hotels", "no flights"]
+    )
+
+    if explicit_flight_only:
+        return "flights"
+    if explicit_hotel_only:
+        return "hotels"
+
+    flight_keywords = {"flight", "flights", "fly", "airfare", "airport", "departure", "arrival", "route"}
+    hotel_keywords = {"hotel", "hotels", "accommodation", "stay", "lodging", "room", "reservation"}
+
+    has_flights = any(keyword in text for keyword in flight_keywords)
+    has_hotels = any(keyword in text for keyword in hotel_keywords)
+
+    if has_flights and has_hotels:
+        return "both"
+    if has_flights:
+        return "flights"
+    if has_hotels:
+        return "hotels"
+
+    return "both"
+
+
 def extract_trip_context(user_text: str) -> Dict[str, Any]:
     """
     Extracts simple trip metadata from the user query to support round-trip flight handling.
@@ -134,6 +168,17 @@ def send_message_with_retry(chat, prompt: str, max_retries: int = 3, delay: int 
             delay *= 2
 
 
+def build_scope_instruction(search_scope: str) -> str:
+    """
+    Builds a short instruction block that constrains the agent to the appropriate tool scope.
+    """
+    if search_scope == "flights":
+        return "SEARCH SCOPE: Flights only. Do not search hotels or create hotel-related suggestions."
+    if search_scope == "hotels":
+        return "SEARCH SCOPE: Hotels only. Do not search flights or discuss flight options."
+    return "SEARCH SCOPE: Flights and hotels. Search flights first, then ask for approval before searching hotels."
+
+
 def run_react_agent(user_prompt: str, max_iterations: int = 10):
     """
     Main ReAct loop with max retries limit (3) and repeated action detection to prevent infinite loops.
@@ -156,6 +201,8 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
     current_input = user_prompt
     iteration = 0
     trip_context = extract_trip_context(user_prompt)
+    search_scope = detect_search_scope(user_prompt)
+    scope_instruction = build_scope_instruction(search_scope)
 
     # Tracking tools calls to prevent infinite loops
     last_action_signature = None
@@ -165,6 +212,13 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
     print(f"\n🚀 Starting Travel Agent ReAct Session...")
     print(f"User Request: {user_prompt}\n" + "="*60)
 
+    if search_scope == "flights":
+        allowed_tools = {"search_flights", "add_calendar_event", "create_travel_itinerary_doc"}
+    elif search_scope == "hotels":
+        allowed_tools = {"search_hotels", "add_calendar_event", "create_travel_itinerary_doc"}
+    else:
+        allowed_tools = {"search_flights", "search_hotels", "add_calendar_event", "create_travel_itinerary_doc"}
+
     tool_registry: Dict[str, Callable] = {
         "search_flights": lambda **kwargs: execute_flight_search(kwargs, trip_context),
         "search_hotels": search_hotels,
@@ -172,12 +226,15 @@ def run_react_agent(user_prompt: str, max_iterations: int = 10):
         "create_travel_itinerary_doc": create_travel_itinerary_doc,
     }
 
+    tool_registry = {name: func for name, func in tool_registry.items() if name in allowed_tools}
+
     while iteration < max_iterations:
         iteration += 1
         print(f"\n--- [Iteration {iteration}] ---")
         
         # Call LLM with max 3 retries limit
-        response = send_message_with_retry(chat, current_input, max_retries=3)
+        prompt_with_scope = f"{scope_instruction}\n\n{current_input}"
+        response = send_message_with_retry(chat, prompt_with_scope, max_retries=3)
         response_text = response.text
         print(f"\n🤖 Agent Output:\n{response_text}")
 
